@@ -9,14 +9,16 @@ from cryptography.fernet import Fernet
 logins = {}
 
 def generate_key(master_pass):
-	key = Fernet.generate_key()
-	with open(master_pass, "wb") as f:
-		f.write(key)
-	return key
+	# key = Fernet.generate_key()
+	# with open(master_pass, "wb") as f:
+	# 	f.write(key)
+	# return key
+    pass
 
 def get_key(master_pass):
-	key = open(master_pass, "rb").read()
-	return key
+	# key = open(master_pass, "rb").read()
+	# return key
+    pass
 
 def addLogin(service, username, password, secret):
     print('Storing credentials ...')
@@ -37,32 +39,31 @@ def getLogin(service):
         return
 
 def main():
+    # authenticated = False
+    done = False
 
-	while not authenticated:
-		cmd = input('C(reate Account)\n'
-					'L(ogin to Account)\n')
-		if cmd == 'C' or cmd == 'c':
-			master_pass = input('Enter a master password: \n')
-			key = generate_key(master_pass)
-			authenticated = True
-		elif cmd == 'L' or cmd == 'l':
-			master_pass = input('Enter your master password: \n')
-			key = get_key(master_pass)
-			authenticated = True
-		else:
-			print('G00D BY3 :)\n')
-			return
-
-    if secret == key:
-		print('Welcome back.\n')
-    else:
-        print('Nice one! try again :p\n')
-        return
-
+    # while not authenticated:
+    #     cmd = input('C(reate Account)\nL(ogin to Account)\n')
+    #     if cmd == 'C' or cmd == 'c':
+    #         master_pass = input('Enter a master password: \n')
+    #         key = generate_key(master_pass)
+    #         authenticated = True
+    #     elif cmd == 'L' or cmd == 'l':
+    #         master_pass = input('Enter your master password: \n')
+    #         key = get_key(master_pass)
+    #         authenticated = True
+    #     else:
+    #         print('G00D BY3 :)\n')
+    #         return
+            
+    # if secret == key:
+    #     print('Welcome back.\n')
+    # else:
+    #     print('Nice one! try again :p\n')
+    #     return
+    
     while not done:
-        cmd = input('What would you like to do? \n'
-                    'A(dd) a login \n'
-                    'G(et) a login \n')
+        cmd = input('What would you like to do? \nA(dd) a login \nG(et) a login \n')
         print()
         if cmd == 'A' or cmd == 'a':
             service = input('Enter the service name:\n')
@@ -77,7 +78,6 @@ def main():
         else:
             print('G00D BY3 :)\n')
             done = True
-
     return
 
 main()
