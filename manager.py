@@ -1,38 +1,64 @@
 # from cryptography.fernet import Fernet
 from gooey import Gooey, GooeyParser
+import mysql.connector
+from mysql.connector import Error
+
 
 # TODO:
 # BEN => hash passwords
-# ABBY => store credentials in database (SQL) instead of "dev_db" file
-# NEIL => GUI
+# ABBY => store credentials in database (SQL) instead of "dev_db" file (done)
+# NEIL => GUI (done)
+
+
+def create_connection(host_name, user_name, user_password, db_name):
+    connection = None
+    try:
+        connection = mysql.connector.connect(
+            host=host_name,
+            user=user_name,
+            passwd=user_password,
+            database=db_name
+        )
+        print("Connection to MySQL DB successful")
+
+    except Error as e:
+        print(f"The error '{e}' occurred")
+
+    return connection
+
+
 
 def add_login(service, username, password):
+
     print('Storing credentials ...')
-    db = open('dev_db', 'a')
-    db.write('{} : {} : {}\n'.format(service, username, password))
-    db.close()
+
+    connection = create_connection("localhost", "root", "Idog9587!", "passManager")
+
+    cursor = connection.cursor()
+
+    cursor.execute("INSERT INTO users (Service, User, Pass) VALUES (%s, %s, %s)", (service, username, password))
+
+    connection.commit()
+   
     return
 
 
 def get_login(service):
-    db = open('dev_db', 'r')
+    
+    connection = create_connection("localhost", "root", "Idog9587!", "passManager")
 
-    while True:
-        line = db.readline()   # iterate through lines 
+    cursor = connection.cursor()
+   
+    cursor.execute("SELECT User, Pass FROM users WHERE Service = (%s)", (service,))
 
-        if not line:    # stop at end of file
-            break
+    login = cursor.fetchall()
 
-        creds = line.split(':')    # split line by the delimiter ':'
-        creds = [c.strip() for c in creds]  # remove leading and trailing whitespace
-
-        # check for a matching service (not case sensitive)
-        if creds[0].lower() == service.lower():
-            print('Credentials found: \n')
-            return creds
-
-    print('Credentials not found \n')
-    db.close()
+    if(len(login) == 0):
+        print('Credentials not found \n')
+        return
+    else:
+        print('Credentials found: \n')
+        return login
     return
 
 
@@ -73,7 +99,7 @@ def main():
         creds = get_login(service)
         if creds:
             print('\tService \t\t=>\t {} \n \tUsername \t=>\t {} \n \tPassword \t=>\t {}'.format(
-                creds[0], creds[1], creds[2]))
+                service, creds[0][0], creds[0][1]))
 
 
 main()
