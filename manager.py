@@ -1,6 +1,10 @@
-# from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from gooey import Gooey, GooeyParser
 import mysql.connector
+import os
+import base64
 from mysql.connector import Error
 
 
@@ -32,23 +36,23 @@ def add_login(service, username, password):
 
     print('Storing credentials ...')
 
-    connection = create_connection("localhost", "root", "Idog9587!", "passManager")
+    connection = create_connection("localhost", "root", "newtha12", "passManager")
 
     cursor = connection.cursor()
 
     cursor.execute("INSERT INTO users (Service, User, Pass) VALUES (%s, %s, %s)", (service, username, password))
 
     connection.commit()
-   
+
     return
 
 
 def get_login(service):
-    
+
     connection = create_connection("localhost", "root", "Idog9587!", "passManager")
 
     cursor = connection.cursor()
-   
+
     cursor.execute("SELECT User, Pass FROM users WHERE Service = (%s)", (service,))
 
     login = cursor.fetchall()
@@ -88,9 +92,41 @@ def main():
 
     if len(args) > 1:   # add password
         print('Encrypting password ...')
+        ## When and where do we set the masterPassword?
+        ## Plan on doing:
+        ##      Use masterpassword to create a master key, master_key = robust_cryptology_function(masterPass, salt, (optional?) MAC)
+        ##      when user creates a new pass word for a new service (or new password for old service) we encrypt that new_pass
+        ##      new_pass is generated with  new_encrytption_key, new_encryption_key is generated using master_key
+        ##      new_encryption_key is used to encrypt contents of new_pass
+        ##      new_pass is saved...where? I guess right now just pass send it straight to the MySQL database
         ##     ENCRYPTING     ##
         ## HASH PASSWORD HERE ##
-        service, username, password = args['Service'], args['Username'], args['Password']
+
+        #convert password to bytes because...
+        new_pass = bytes(args['Password'], 'utf-8')
+
+        #generate salt for key generation
+        #the salt has to be stored in a retrievable location in order to derive same key in future
+        salt = os.urandom(16)
+
+        #slow hash function
+        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(),
+                 length=32,
+                 salt=salt,
+                 iterations=100000,
+                 )
+
+        #generate key from hash generated above, as long as we know salt we can re-compute for authentication
+        key = base64.urlsafe_b64encode(kdf.derive(new_pass))
+        # ^ might use master_key up here, wont need to  store salt for master_key just the key generated from it
+        #to generate secure new_pass, use master_key as the seed for below
+        f = Fernet(key)
+        #I am not sure exactly what I'm doing up here ^, I think this might be what we do for the master_pass
+        token = f.encrypt(new_pass)
+        print(token)
+        print(f.decrypt(token))
+
+        service, username, password = args['Service'], args['Username'], token
         add_login(service, username, password)
         print('Credentials stored \n')
     else:   # get password
