@@ -6,6 +6,8 @@ import mysql.connector
 import os
 import base64
 from mysql.connector import Error
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.kbkdf import (CounterLocation, KBKDFHMAC, Mode)
 
 
 # TODO:
@@ -75,104 +77,111 @@ def get_login(service):
         return login
     return
 
-    # Creates a new user. So right now 'user' is just a variable that we send to a database, I think this has to be a lil beefier.
-    # For instance, a UI where user enters username and master password. This is where we authenticate the user.
-    # Once user enters name and password they can 'add or update password' or 'get_password'
-def create_user():
+    # Creates a new user
+def create_user(master_password, username):
 
-    # username = username
-    # salt = salt
-    # make secret key
-    # make master key
-    # make database key
-    # make service database key
-    return
+    #SEND SALT TO TABLE WE NEED THIS MF STORED
+    salt = os.urandom(16)
+    key_encryption_key = generate_master_key(master_password, salt)
+    user_table_key = generate_user_table_key(key_encryption_key)
+    username = username
+    service_key = generate_service_table_key()
+    #initialize a service_table for specific user
 
+    encrypted_user_table_key = key_encryption_key.encrypt(user_table_key)
+    encyrpted_KEK = user_table_key.encrypt(key_encryption_key)
+    encrypted_validator = user_table_key.encrypt(user_table_key)
+    salt = salt
+    encrypted_service_key = user_table_key.encrypt(service_key)
 
-    # Creates a unique user key, which will be used later
-def create_user_key():
-    # Idk how complicated to get with this secret key generation, we got options
-    # could be as simple as appropriately generated random value
+    #SEND EVERYTHING TO USER_TABLE
     return
 
 
     # Creates a master key for a new user, which will be used later
-def generate_master_key(master_password, username):
+    # Would have liked to use 'username' to seed as well
+def generate_master_key(master_password, salt):
     # master_password - user supplied master password. The pm does not store this, the user must remember it.
     # this is generated only once per user, it needs to be stored in order to regenerate the master key for authentication
 
-        salt = os.urandom(16)
-    #generate salt for key generation
-    #the salt has to be stored in a retrievable location in order to derive same key in future
+    #Password Based Key Derivation, a slow hashing function
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+        )
+    #derives the key from the password
+    master_key = base64.urlsafe_b64encode(kdf.derive(master_password))
+    f = Fernet(master_key)
+    #RETURN TO ENCRYPT_USER_TABLE TO SEND TO TABLE
+    return f
 
+    # Gernerates the key used to encrypt items stored in user_table
+def generate_user_table_key(KEK):
+    kdf = KBKDFHMAC(
+     algorithm=hashes.SHA256(),
+     mode=Mode.CounterMode,
+     length=32,
+     rlen=4,
+     llen=4,
+     location=CounterLocation.BeforeFixed,
+     label=label,
+     context=context,
+     fixed=None)
+    user_table_key = kdf.derive(KEK)
+    return user_table_key
 
-    #slow hash function
-        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-            )
-
-    #generate key from hash generated above, as long as we know salt we can re-compute for authentication
-        key = base64.urlsafe_b64encode(kdf.derive(new_pass))
-    # ^ might use master_key up here, wont need to  store salt for master_key just the key generated from it
-    #to generate secure new_pass, use master_key as the seed for below
-        f = Fernet(key)
-    #I am not sure exactly what I'm doing up here ^, I think this might be what we do for the master_pass
-        token = f.encrypt(new_pass)
-        print(token)
-        print(f.decrypt(token))
-
-        return token
+    # Generates a key used to encrypt items in the service table
+def generate_service_table_key():
+    key = Fernet.generate_key()
+    service_table_key = Fernet(key)
+    return service_table_key
 
     # Is authentication the proper technical term?
     # Checks if user supplied password matches the stored one
-def authenticate_user():
-    # (We are checking the keys not the passwords)
-    # access database and get the key that is stored there (database will be encryoted! with what? idk yet :/ )
-    # do we store the master key in plaintext?
-
-    #Authentication on master Password:
-    #Read encryptedDatabaseKey and encryptedValidator from db
-    #KEK = MD5(master_password + salt)
-    #IV = MD5(KEK + password + salt)
-    #DatabaseKey = AES-CBC (KEK, IV, encryptedDatabaseKey)
-    #Validator = AES-CBC (DatabaseKey, NULL, encryptedValidator)
-    #If validator = DatabaseKey then password is correct
-
-    #store an encrypted version of the master key
-    #when user logs into Open Sesame they will enter their master pass
-    return
-
-    # Encrypts things stored in service database
-def encrypt_service():
-    # What is going to be stored? How will it be encrypted?
-    return
-
-
-    # Encrypts things stored in user database
-def encrypt_user():
-    # What is going to be stored? How will it be encrypted?
-    return
-
-    # Decrypts things stored in service database
-def decrypt_service():
-    ####
-    # arguments:
-    # encryptedPass:
-    # ###
+def authenticate_user():   #also has added functionality of decrypting and saving the things we need, stretch goal is that when app "terminates" the saved things are cleared from mem
+    #attempted_pass = USER_ENTERED_MASTER_PASSWORD
+    #SALT IS NOT ENCRYPTED WHEN ITS STORED!
+    #salt = get_salt_from_table
+    #KEK = generate_master_key(attepted_pass, salt)
+    #encrypted_user_table_key = grab it
+    #table_key = KEK.decrypt(encrypted_user_table_key)
+    #encrypted_validator = grab encrypted validator
+    #validator = KEK.decrypt(encrypted_validator)
+    # if validator == table_key:
+        # VALID USER!
+        # YAY :)
+        # Save decrypted values of the database. So technically the table on our computers will never hold something that is decrypted
+        # Instead we load the decrypted values into memory for access (we do that here) (we have to acknowledge that having it in memory is a threat)
+        # save KEK for this session (true_KEK = table_key.decrypt(encrypted_KEK), also check if true_KEK==KEK that we just calculated)
+        # save user_table_key
+        # decrypt(service_table_key) and save it
+    # else:
+        # NOT A VALID USER!
+        # NAY :(
     return
 
 
-    # Decrypts things stored in user dayabase
-def decrypt__user():
-    # User database will store: master_key(used to generate all types of keys, more detail tbd),
-    # secret_key(used to generate master_key and also maybe other password? tbd),
-    # database_key(used to encrypt things in the database),
-    # service_database_key(not thought out, the key used to encrypt service database)
-    # username, I guess
-    # Oh also the salt used to generate the master key, I think?
+def add_service(service, username, password):
+    #generate random key, encrypt password with that key, encrypt key with kek, send to db
+    key = Fernet.generate_key()
+    f = Fernet(key)
+    encrypted_pass = f.encrypt(password)
+    KEK = #get KEK
+    encrypted_key = #KEK.encrypt(f)
+    #call function that sends to db, that function will encrypt using service_key
+    #for each service we store service, username, encrypted_pass, encrypted_key
     return
+
+def get_service(service, user_table_key):
+    #if service in table service
+    #grab value stored in encrypted_pass and encrypted_key
+    #KEK = get KEK
+    #key = KEK.decrypt(encrypted_key)
+    #password = key.decrypt(encrypted_pass)
+    return #password
+
+
 
 
 @Gooey(program_name='open-sesame')  # attach Gooey to our code
