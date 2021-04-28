@@ -38,6 +38,7 @@ Password Manager -- A Group Final Project for CSC 382: Introduction to Informati
 - Ensure .env is in the same directory as manager.py
 - If "add",  "get", "update", or "delete" are not working, ensure you have successfully logged in with "login"
 - If this the first time you are using this app, ensure you have successfully an account with "setup"
+- The action "update" only lets you change the password for a login. In order to change more, "delete" the old login and "add" a new one.
 
 ## Technologies
 - Cryptography (Encryption library)
