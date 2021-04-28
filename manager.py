@@ -1,4 +1,7 @@
-## LIBRARIES ##
+#################
+##  LIBRARIES  ##
+#################
+
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -12,22 +15,37 @@ import base64
 import mysql.connector
 import os
 
-## CONSTANTS ##
+#################
+##  CONSTANTS  ##
+#################
+
 HOST = "localhost"
 DB_NAME = "passManager"
 
-# load .env
+
+#################
+##  LOAD .ENV  ##
+#################
+
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
-# TODO:
-# BEN => hash passwords
-# ABBY => store credentials in database (SQL) instead of "dev_db" file (done) database-end master password, secure way to deploy/host database, sanitize inputs
-# NEIL => GUI (done) application-end master password, add functionality for changing existing passwords
+
+############
+##  TODO  ##
+############
+# BEN => generate user-specific secrets, store/read secrets in master table, encrypt/hash passwords
+# ABBY => storing secrets in master table, SQL for add/get/update/delete funcs, secure way to deploy/host database, sanitize inputs
+# NEIL => 5 subparsers for GUI (setup, login, add, get, update, delete)
 
 
-# generates an .env file with user-specified username/password for DB connection
+##################
+##  INIT FUNCS  ##
+##################
+
 def generate_env():
+    ''' generates an .env file with user-specified username/password for DB connection '''
+
     username = ""
     password = ""
 
@@ -51,8 +69,9 @@ def generate_env():
     set_key(dotenv_path, "DB_NAME", DB_NAME)
     
 
-# checks if the .env file is valid (for our purposes)
 def is_valid_env():
+    ''' checks if the .env file is valid (for our purposes) '''
+
     env_vars = dotenv_values(".env")
     for var in env_vars:
         if len(env_vars[var]) < 1:
@@ -61,8 +80,9 @@ def is_valid_env():
     return True
 
 
-# initializes the app for first-time users
 def init():
+    ''' initializes the app for first-time users '''
+
     # check for valid .env or generate it
     if not is_valid_env():
         generate_env()
@@ -89,6 +109,7 @@ def init():
             cursor.execute("CREATE DATABASE {}".format(os.environ["DB_NAME"]))
 
             # create a user_table
+            # TODO: Abby, please check if this right! -Neil
             cursor.execute("CREATE TABLE user_table (username VARCHAR(100) PRIMARY KEY, eutk INT, eKEK INT, ev INT, salt INT, esk INT)")
         
         # close the DB cursor and connection
@@ -101,8 +122,14 @@ def init():
 
     return False
 
-# create a connetion to the MySQL DB
+
+####################
+##  HELPER FUNCS  ##
+####################
+
 def create_connection():
+    ''' creates a connection to the MySQL DB '''
+
     connection = None
 
     try:
@@ -120,68 +147,9 @@ def create_connection():
     return connection
 
 
-# create a user with master_password, and make a user_table
-def create_user(master_password, username):
-    salt = os.urandom(16)
-    key_encryption_key = generate_master_key(master_password, salt)
-    user_table_key = generate_user_table_key(key_encryption_key)
-
-    service_key = generate_service_table_key()
-    
-    # Need to store:
-    username = username
-    encrypted_user_table_key = key_encryption_key.encrypt(user_table_key)
-    encyrpted_KEK = user_table_key.encrypt(key_encryption_key)
-    encrypted_validator = user_table_key.encrypt(user_table_key)
-    salt = salt
-    encrypted_service_key = user_table_key.encrypt(service_key)
-
-    # SEND EVERYTHING TO USER_TABLE
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    # TODO: MENTION VARCHAR FOR USERNAME
-    # TODO: are these strings or integers?
-    cursor.execute("INSERT INTO user_table (username, eutk, eKEK, ev, salt, esk) VALUES (%s, %s, %s, %s, %s)",
-                   (username, encrypted_user_table_key, encrypted_KEK, encrypted_validator, salt, encrypted_service_key))
-    connection.commit()
-    cursor.close()
-    connection.close()
-
-    return
-
-    # Would have liked to use 'username' to seed as well
-    # TODO: ASK
-
-
-# retrieve the password for the given service and username
-def get_login(service, username):
-    connection = create_connection()
-
-    cursor = connection.cursor()
-
-    # TODO: this users table may have to be changed
-    cursor.execute(
-        "SELECT User, Pass FROM users WHERE Service = (%s)", (service))
-
-    login = cursor.fetchall()
-    # password = decrypt(Pass)
-
-    if(len(login) == 0):
-        print('Credentials not found \n')
-        # TODO: make sure this doesn't fuck stuff up
-        cursor.close()
-        connection.close()
-
-    else:
-        print('Credentials found: \n')
-        cursor.close()
-        connection.close()
-        return login
-
-
-# generates a master_key used for verifying user authentication
 def generate_master_key(master_password, salt):
+    ''' generates a master_key used for verifying user authentication '''
+
     # master_password - user supplied master password. The pm does not store this, the user must remember it.
     # this is generated only once per user, it needs to be stored in order to regenerate the master key for authentication
 
@@ -200,8 +168,9 @@ def generate_master_key(master_password, salt):
     return f
 
 
-# generate a key to encrypt passwords added to the user_table
 def generate_user_table_key(KEK):
+    ''' generates a key to encrypt passwords added to the user_table '''
+
     kdf = KBKDFHMAC(
      algorithm=hashes.SHA256(),
      mode=Mode.CounterMode,
@@ -216,8 +185,10 @@ def generate_user_table_key(KEK):
     return user_table_key
 
 
-# Q: ?????????? is this not just ^
+#TODO is this not just ^ ?? -Neil
 def generate_service_table_key():
+    '''INSERT FUNCTION DESCRIPTION'''
+
     key = Fernet.generate_key()
     service_table_key = Fernet(key)
     return service_table_key
@@ -227,8 +198,50 @@ def generate_service_table_key():
         # stretch goal is that when app "terminates" the saved things are cleared from mem
     # DB done (I think)
 
-# authenticates a user if they supply a valid username and master_password
+
+#########################################
+##  ACTIONS FOR UNAUTHENTICATED USERS  ##
+#########################################
+
+def create_user(master_password, username):
+    ''' create a user with master_password, and make a user_table '''
+
+    salt = os.urandom(16)
+    key_encryption_key = generate_master_key(master_password, salt)
+    user_table_key = generate_user_table_key(key_encryption_key)
+
+    service_key = generate_service_table_key()
+    
+    # Need to store:
+    username = username #TODO: is this needed? -Neil
+    encrypted_user_table_key = key_encryption_key.encrypt(user_table_key)
+    encyrpted_KEK = user_table_key.encrypt(key_encryption_key)
+    encrypted_validator = user_table_key.encrypt(user_table_key)
+    salt = salt #TODO: is this needed? -Neil
+    encrypted_service_key = user_table_key.encrypt(service_key)
+
+    # SEND EVERYTHING TO USER_TABLE
+    connection = create_connection()
+    cursor = connection.cursor()
+
+    # TODO: Should we create a user_table here? -Neil
+
+    # TODO: MENTION VARCHAR FOR USERNAME
+    # TODO: are these strings or integers?
+    cursor.execute("INSERT INTO user_table (username, eutk, eKEK, ev, salt, esk) VALUES (%s, %s, %s, %s, %s)",
+                   (username, encrypted_user_table_key, encrypted_KEK, encrypted_validator, salt, encrypted_service_key))
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+    return
+
+    # Would have liked to use 'username' to seed as well
+    # TODO: ASK
+
+
 def authenticate_user():
+    ''' authenticates a user if they supply a valid username and master_password '''
 
     # USER ENTERS USERNAME #
     # username =
@@ -268,12 +281,17 @@ def authenticate_user():
         # NAY :(
     
 
-    # Q: Can we have this function return True or False? so we can use it to authenticate in main()?
+    # TODO: Can we have this function return True or False? so we can use it to authenticate in main()? -Neil
     return
 
 
-# add a login (service, username, password) to be saved in the password manager
+#####################################
+## ACTIONS FOR AUTHENTICATED USERS ##
+#####################################
+
 def add_service(service, username, password, KEK):
+    ''' add a login (service, username, password) to be saved in the password manager '''
+
     # generate random key, encrypt password with that key, encrypt key with kek, send to db
     key = Fernet.generate_key()
     f = Fernet(key)
@@ -287,15 +305,70 @@ def add_service(service, username, password, KEK):
     return
 
 
-# get a login that matches the given service and username 
+# TODO: Is this not just get_service down below? -Neil
+# TODO: do we want to stick with xyz_login() or xyz_service()? -Neil
+def get_login(service, username):
+    ''' retrieve the password for the given service and username '''
+
+    connection = create_connection()
+
+    cursor = connection.cursor()
+
+    # TODO: this users table may have to be changed
+    cursor.execute(
+        "SELECT User, Pass FROM users WHERE Service = (%s)", (service))
+
+    login = cursor.fetchall()
+    # password = decrypt(Pass)
+
+    if(len(login) == 0):
+        print('Credentials not found \n')
+        # TODO: make sure this doesn't fuck stuff up
+        cursor.close()
+        connection.close()
+
+    else:
+        print('Credentials found: \n')
+        cursor.close()
+        connection.close()
+        return login
+
+
 def get_service(service, username, user_table_key, KEK):
+    ''' get the login that matches the given service and username '''
+
     # if service in table service
     # grab value stored in encrypted_pass and encrypted_key
+
     # KEK = get KEK
     # key = KEK.decrypt(encrypted_key)
     # password = key.decrypt(encrypted_pass)
+
     return #password
 
+
+def update_service(service, username, new_password):
+    ''' update the login that matches the given service and username with the given password'''
+
+    # use service/username to find the right entry
+    # ENCRYPT
+    # update the entry's password with the new_password
+
+    return
+
+
+def delete_service(service, username):
+    ''' delete the login that matches the given service and username '''
+
+    # use service/username to find the right entry
+    # delete the entry
+
+    return
+
+
+###########################
+##  APPLICATION WRAPPER  ##
+###########################
 
 @Gooey(program_name='open-sesame')  # attach Gooey to our code
 def main():
@@ -303,10 +376,17 @@ def main():
     if not init():
         return
 
-#     parser = GooeyParser()  # main app
-#     subs = parser.add_subparsers()  # add functions to the app
-#     add_parser = subs.add_parser('add')  # add the "add password" function
-#     get_parser = subs.add_parser('get')  # add the "get password" function
+    parser = GooeyParser()                      # main app
+    subs = parser.add_subparsers()              # add functions to the app
+    setup_parser = subs.add_parser('setup')     # add the "setup acount" function
+    login_parser = subs.add_parser('login')     # add the "login account" function
+    add_parser = subs.add_parser('add')         # add the "add password" function
+    get_parser = subs.add_parser('get')         # add the "get password" function
+    update_parser = subs.add_parser('update')   # add the "update password" function
+    delete_parser = subs.add_parser('delete')   # add the "delete password" function
+
+    # add argument groups for each parser
+    # add_parser.add_argument_group()
 
 #     # add user input fields for function parameters
 #     add_parser.add_argument('Service', widget='Textarea', gooey_options={
