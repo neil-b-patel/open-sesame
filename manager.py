@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.kdf.kbkdf import (CounterLocation, KBKDFHMAC
 
 # TODO:
 # BEN => hash passwords
-# ABBY => store credentials in database (SQL) instead of "dev_db" file (done) database-end master password, secure way to deploy/host database
+# ABBY => store credentials in database (SQL) instead of "dev_db" file (done) database-end master password, secure way to deploy/host database, sanitize inputs
 # NEIL => GUI (done) application-end master password, add functionality for changing existing passwords
 
 # does sql create a vulnerability? Do we have to parse it or whatever its called? does the database get hosted locally?
@@ -35,29 +35,30 @@ def create_connection(host_name, user_name, user_password, db_name):
 
     return connection
 
-
+    #TODO: Is this still needed?
     # We need add_login and add_service to be two seperate functions i think
-def add_login(service, username, password):
-    # Throws error when adding a repeat service/username. We probably need something to handle changing a password for existing service
-    print('Storing credentials ...')
+    # def add_login(service, username, password):
+    # # Throws error when adding a repeat service/username. We probably need something to handle changing a password for existing service
+    # print('Storing credentials ...')
+    #                                     #TODO: ADD ENV VARIABLE
+    # connection = create_connection("localhost", "root", "newtha12", "passManager")
 
-    connection = create_connection("localhost", "root", "newtha12", "passManager")
+    # cursor = connection.cursor()
 
-    cursor = connection.cursor()
+    # cursor.execute("INSERT INTO users (Service, User, Pass) VALUES (%s, %s, %s)", (service, username, password))
 
-    cursor.execute("INSERT INTO users (Service, User, Pass) VALUES (%s, %s, %s)", (service, username, password))
+    # connection.commit()
 
-    connection.commit()
-
-    return
+    # return
 
 
 def get_login(service):
-
+                    #TODO: CREATE ENV VARIABLE
     connection = create_connection("localhost", "root", "Idog9587!", "passManager")
 
     cursor = connection.cursor()
-                                #pass will be super encrypted
+
+                            ##TODO: this users table may have to be changed
     cursor.execute("SELECT User, Pass FROM users WHERE Service = (%s)", (service,))
 
     login = cursor.fetchall()
@@ -65,14 +66,21 @@ def get_login(service):
 
     if(len(login) == 0):
         print('Credentials not found \n')
+        #TODO: make sure this doesn't fuck stuff up
+        cursor.close()
+        connection.close()
         return
     else:
         print('Credentials found: \n')
+        cursor.close()
+        connection.close()
+
         return login
     return
 
     # Creates a new user
     # When do we use? ASSUME FOR NOW BIG OL BUTTON
+    #DB DONE
 def create_user(master_password, username):
 
     #SEND SALT TO TABLE WE NEED THIS MF STORED
@@ -81,7 +89,7 @@ def create_user(master_password, username):
     user_table_key = generate_user_table_key(key_encryption_key)
 
     service_key = generate_service_table_key()
-    #initialize a service_table for specific user
+    #using one table for all encrypted master values
     # abby comes in
     # Need to store:
     username = username
@@ -92,12 +100,28 @@ def create_user(master_password, username):
     encrypted_service_key = user_table_key.encrypt(service_key)
 
     # SEND EVERYTHING TO USER_TABLE
-    # ONE COLUMN TABLE
+                        #TODO: ADD ENV VARIABLE
+     connection = create_connection("localhost", "root", "Idog9587!", "passManager")
+
+     cursor = connection.cursor()
+
+     #TODO: MENTION VARCHAR FOR USERNAME
+     #TODO: are these strings or integers?
+     cursor.execute("INSERT INTO user_table (username, eutk, eKEK, ev, salt, esk) VALUES (%s, %s, %s, %s, %s)", (username, encrypted_user_table_key, 
+            encrypted_KEK, encrypted_validator, salt, encrypted_service_key))
+
+     connection.commit()
+
+     cursor.close()
+
+     connection.close()
+
     return
 
 
     # Creates a master key for a new user, which will be used later
     # Would have liked to use 'username' to seed as well
+    #TODO: ASK
 def generate_master_key(master_password, salt):
     # master_password - user supplied master password. The pm does not store this, the user must remember it.
     # this is generated only once per user, it needs to be stored in order to regenerate the master key for authentication
@@ -112,7 +136,8 @@ def generate_master_key(master_password, salt):
     #derives the key from the password
     master_key = base64.urlsafe_b64encode(kdf.derive(master_password))
     f = Fernet(master_key)
-    #RETURN TO ENCRYPT_USER_TABLE TO SEND TO TABLE
+    #RETURN TO ENCRYPT_USER_TABLE TO SEND TO TABLE ?
+
     return f
 
     # Generates the key used to encrypt items stored in user_table
@@ -136,24 +161,45 @@ def generate_service_table_key():
     service_table_key = Fernet(key)
     return service_table_key
 
-    # Checks if user supplied password matches the stored one
-def authenticate_user():   #also has added functionality of decrypting and saving the things we need, stretch goal is that when app "terminates" the saved things are cleared from mem
 
-    # USER ENTERS USERNAME  #
+    # Checks if user supplied password matches the stored one
+    #also has added functionality of decrypting and saving the things we need, 
+        # stretch goal is that when app "terminates" the saved things are cleared from mem
+    #DB done (I think)
+def authenticate_user():   
+
+    # USER ENTERS USERNAME #
+    #username = 
     #attempted_pass = USER_ENTERED_MASTER_PASSWORD
     #SALT IS NOT ENCRYPTED WHEN ITS STORED!
-                                # each user gets id and store in one table when user logs in with username get
-    salt = get_salt_from_table ## FROM (%table) SELECT salt WHERE user = (%username)                   FROM table GET id
+              #TODO: ADD ENV VARIABLE
+    #grab: salt, encrypted_user_table_key,  grab encrypted validator
+     connection = create_connection("localhost", "root", "Idog9587!", "passManager")
+
+     cursor = connection.cursor()
+
+     salt = cursor.execute("SELECT salt FROM user_table WHERE username = (%s)", (username))
+
+     encrypted_user_table_key = cursor.execute("SELECT eutk FROM user_table WHERE username = (%s)", (username))
+
+     encrypted_validator = cursor.execute("SELECT ev FROM user_table WHERE username = (%s)", (username))
+
+     connection.commit()
+
+     cursor.close()
+
+     connection.close()
+
     #KEK = generate_master_key(attepted_pass, salt)
-    #encrypted_user_table_key = grab it
     #table_key = KEK.decrypt(encrypted_user_table_key)
-    #encrypted_validator = grab encrypted validator
     #validator = KEKorTABLE_KEY.decrypt(encrypted_validator)
+
     # if validator == table_key:
         # VALID USER!
         # YAY :)
         # Save decrypted values of the database. So technically the table on our computers will never hold something that is decrypted
         # Instead we load the decrypted values into memory for access (we do that here) (we have to acknowledge that having it in memory is a threat)
+        # TODO: SAVE WHERE?
         # save KEK for this session (true_KEK = table_key.decrypt(encrypted_KEK), also check if true_KEK==KEK that we just calculated)
         # save user_table_key
         # decrypt(service_table_key) and save it
@@ -170,7 +216,9 @@ def add_service(service, username, password, KEK):
     encrypted_pass = f.encrypt(password)
     KEK = #get KEK
     encrypted_key = #KEK.encrypt(f)
+    #what?
     #call function that sends to db, that function will encrypt using service_key
+
     #for each service we store service, username, encrypted_pass, encrypted_key
     return
 
@@ -212,7 +260,7 @@ def main():
     # Checkpoint: will need to change to account for add_service and add_user. FIX BELOW
     if len(args) > 1:   # add password
         print('Encrypting password ...')
-        ## NEW USER ALERT!!  ##
+        ##   NEW USER ALERT!! ##
         ##     ENCRYPTING     ##
         ## HASH PASSWORD HERE ##
 
