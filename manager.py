@@ -16,14 +16,8 @@ from cryptography.hazmat.primitives.kdf.kbkdf import (CounterLocation, KBKDFHMAC
 # NEIL => GUI (done) application-end master password, add functionality for changing existing passwords
 
 # does sql create a vulnerability? Do we have to parse it or whatever its called? does the database get hosted locally?
-# depending on how db is hosted,
-# everything in the database will be encrypted. Service, User/email, and Password and #more things to come!
-# How do you imagine the fully functional version working? When users open the pm they have to enter their masterPass
-# If correct (more detail below), they will be able to add new services/passwords and get passwords from existing services
-# If adding, do_proper_encryption and send to db
-# If getting, do_proper_decryption of things in db
-# Q: Will the user supply/input the service they want, or will they be able to choose among the options?
-# I believe it'd be more secure if they have to supply. The process of accessing and decrypting things from the db will look different depending
+
+# If MP correct (more detail below), they will be able to add new services/passwords and get passwords from existing service
 def create_connection(host_name, user_name, user_password, db_name):
 
     connection = None
@@ -46,11 +40,11 @@ def create_connection(host_name, user_name, user_password, db_name):
 def add_login(service, username, password):
     # Throws error when adding a repeat service/username. We probably need something to handle changing a password for existing service
     print('Storing credentials ...')
-                                                        #this is not a secure thing to be doing ...right
+
     connection = create_connection("localhost", "root", "newtha12", "passManager")
 
     cursor = connection.cursor()
-                                                      #Pass is encrypted at this point
+
     cursor.execute("INSERT INTO users (Service, User, Pass) VALUES (%s, %s, %s)", (service, username, password))
 
     connection.commit()
@@ -78,23 +72,27 @@ def get_login(service):
     return
 
     # Creates a new user
+    # When do we use? ASSUME FOR NOW BIG OL BUTTON
 def create_user(master_password, username):
 
     #SEND SALT TO TABLE WE NEED THIS MF STORED
     salt = os.urandom(16)
     key_encryption_key = generate_master_key(master_password, salt)
     user_table_key = generate_user_table_key(key_encryption_key)
-    username = username
+
     service_key = generate_service_table_key()
     #initialize a service_table for specific user
-
+    # abby comes in
+    # Need to store:
+    username = username
     encrypted_user_table_key = key_encryption_key.encrypt(user_table_key)
     encyrpted_KEK = user_table_key.encrypt(key_encryption_key)
     encrypted_validator = user_table_key.encrypt(user_table_key)
     salt = salt
     encrypted_service_key = user_table_key.encrypt(service_key)
 
-    #SEND EVERYTHING TO USER_TABLE
+    # SEND EVERYTHING TO USER_TABLE
+    # ONE COLUMN TABLE
     return
 
 
@@ -104,6 +102,7 @@ def generate_master_key(master_password, salt):
     # master_password - user supplied master password. The pm does not store this, the user must remember it.
     # this is generated only once per user, it needs to be stored in order to regenerate the master key for authentication
 
+    # CONVERT MASTER PASSWORD INTO BYTES ??
     #Password Based Key Derivation, a slow hashing function
     kdf = PBKDF2HMAC(algorithm=hashes.SHA256(),
         length=32,
@@ -116,7 +115,7 @@ def generate_master_key(master_password, salt):
     #RETURN TO ENCRYPT_USER_TABLE TO SEND TO TABLE
     return f
 
-    # Gernerates the key used to encrypt items stored in user_table
+    # Generates the key used to encrypt items stored in user_table
 def generate_user_table_key(KEK):
     kdf = KBKDFHMAC(
      algorithm=hashes.SHA256(),
@@ -137,17 +136,19 @@ def generate_service_table_key():
     service_table_key = Fernet(key)
     return service_table_key
 
-    # Is authentication the proper technical term?
     # Checks if user supplied password matches the stored one
 def authenticate_user():   #also has added functionality of decrypting and saving the things we need, stretch goal is that when app "terminates" the saved things are cleared from mem
+
+    # USER ENTERS USERNAME  #
     #attempted_pass = USER_ENTERED_MASTER_PASSWORD
     #SALT IS NOT ENCRYPTED WHEN ITS STORED!
-    #salt = get_salt_from_table
+                                # each user gets id and store in one table when user logs in with username get
+    salt = get_salt_from_table ## FROM (%table) SELECT salt WHERE user = (%username)                   FROM table GET id
     #KEK = generate_master_key(attepted_pass, salt)
     #encrypted_user_table_key = grab it
     #table_key = KEK.decrypt(encrypted_user_table_key)
     #encrypted_validator = grab encrypted validator
-    #validator = KEK.decrypt(encrypted_validator)
+    #validator = KEKorTABLE_KEY.decrypt(encrypted_validator)
     # if validator == table_key:
         # VALID USER!
         # YAY :)
@@ -162,7 +163,7 @@ def authenticate_user():   #also has added functionality of decrypting and savin
     return
 
 
-def add_service(service, username, password):
+def add_service(service, username, password, KEK):
     #generate random key, encrypt password with that key, encrypt key with kek, send to db
     key = Fernet.generate_key()
     f = Fernet(key)
@@ -173,7 +174,7 @@ def add_service(service, username, password):
     #for each service we store service, username, encrypted_pass, encrypted_key
     return
 
-def get_service(service, user_table_key):
+def get_service(service, user_table_key, KEK):
     #if service in table service
     #grab value stored in encrypted_pass and encrypted_key
     #KEK = get KEK
@@ -211,15 +212,10 @@ def main():
     # Checkpoint: will need to change to account for add_service and add_user. FIX BELOW
     if len(args) > 1:   # add password
         print('Encrypting password ...')
-        ## When and where do we set the masterPassword?
-        ## Plan on doing:
-        ##      Use masterpassword to create a master key, master_key = robust_cryptology_function(masterPass, salt, (optional?) MAC)
-        ##      when user creates a new pass word for a new service (or new password for old service) we encrypt that new_pass
-        ##      new_pass is generated with  new_encrytption_key, new_encryption_key is generated using master_key
-        ##      new_encryption_key is used to encrypt contents of new_pass
-        ##      new_pass is saved...where? I guess right now just pass send it straight to the MySQL database
+        ## NEW USER ALERT!!  ##
         ##     ENCRYPTING     ##
         ## HASH PASSWORD HERE ##
+
         new_pass = bytes(args['Password'], 'utf-8')
         master_key = generate_master_key(new_pass, args['Username'])
 
