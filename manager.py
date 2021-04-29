@@ -115,9 +115,10 @@ def init():
 
     # for each service we store service, username, encrypted_pass, encrypted_key
     #TODO: are these strings or ints
-             cursor.execute(
+            cursor.execute(
                 "CREATE TABLE services (username VARCHAR(100), service VARCHAR(100), ep TEXT, ek TEXT, PRIMARY KEY(username, service));")
         # close the DB cursor and connection
+        connection.commit()
         cursor.close()
         db.close()
         return True
@@ -256,12 +257,21 @@ def authenticate_user(username, master_password):
     connection = create_connection()
     cursor = connection.cursor()
 
-    salt = cursor.execute(
+    #TODO: check if .fetchone() is working
+    cursor.execute(
         "SELECT salt FROM user_table WHERE username = (%s)", (username))
-    encrypted_user_table_key = cursor.execute(
+
+    salt = cursor.fetchone()
+
+    cursor.execute(
         "SELECT eutk FROM user_table WHERE username = (%s)", (username))
+    
+    encrypted_user_table_key = cursor.fetchone()
+
     encrypted_validator = cursor.execute(
         "SELECT ev FROM user_table WHERE username = (%s)", (username))
+
+    encrypted_validator = cursor.fetchone()
 
     connection.commit()
     cursor.close()
@@ -312,18 +322,20 @@ def add_service(service, username, password, KEK):
                    (username, service, encrypted_pass, encrypted_key))
 
 
-    count = cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s)) AND service = (%s)", (username, servive))
+    cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s)) AND service = (%s)", (username, servive))
+
+
+    count = cursor.fetchone()
 
     connection.commit()
     cursor.close()
     connection.close()
 
-    if(count == 0){
+    if(count == 0):
         return False
-    }
-    else{
+    else:
         return True
-    }
+    
 
     # Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil | done - Abby
 
@@ -364,16 +376,20 @@ def get_service(service, username, user_table_key, KEK):
     connection = create_connection()
     cursor = connection.cursor()
 
-    count = cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s)) AND service = (%s)", (username, servive))
+    cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s)) AND service = (%s)", (username, servive))
 
-    if(count == 0){
+    count = cursor.fetchone()
+
+    if(count == 0):
         #TODO: what do i return here?
         return 
-    }
-    else{
-         encrypted_pass = cursor.execute(
+    
+    else:
+        cursor.execute(
         "SELECT ep FROM services WHERE username = (%s) AND service = (%s)", (username, service))
-    }
+
+        encrypted_pass = cursor.fetchone()
+    
 
     connection.commit()
     cursor.close()
@@ -404,20 +420,24 @@ def update_service(service, username, new_password):
 
     cursor.execute("UPDATE services SET ep = new_ep, ek = new_ek WHERE username = (%s) AND service = (%s)", (username, service))
 
-    ep =  cursor.execute("SELECT ep FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+    cursor.execute("SELECT ep FROM services WHERE username = (%s) AND service = (%s)", (username, service))
 
-    ek =  cursor.execute("SELECT ek FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+    ep = cursor.fetchone()
+
+    cursor.execute("SELECT ek FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+
+    ep = cursor.fetchone()
 
     connection.commit()
     cursor.close()
     connection.close()
 
-    if(ep == new_ep and ek == new_ek){
+    if(ep == new_ep and ek == new_ek):
         return True
-    }
-    else{
+    
+    else:
         return False;
-    }
+    
     # Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
 
 
@@ -428,20 +448,20 @@ def delete_service(service, username):
     connection = create_connection()
     cursor = connection.cursor()
 
-    ep = cursor.execute("DELETE FROM services WHERE service = (%s) AND username = (%s)", (username, service))
+    cursor.execute("DELETE FROM services WHERE service = (%s) AND username = (%s)", (username, service))
 
-    count = cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s)) AND service = (%s)", (username, servive))
+    cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s)) AND service = (%s)", (username, servive))
+
+    count = cursor.fetchone()
 
     connection.commit()
     cursor.close()
     connection.close()
 
-    if(count == 0){
-        return True
-    }
-    else{
+    if(count == 0):
         return False
-    }
+    else:
+        return True
 
      #Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
 
