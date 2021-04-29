@@ -55,8 +55,8 @@ def generate_env():
 
     while len(password) < 1:
         password = input("Enter a database password (minimum 1 char): ")
-    
-    # write selected DB username/password and constant host/db_name to ENV vars 
+
+    # write selected DB username/password and constant host/db_name to ENV vars
     os.environ["HOST"] = HOST
     os.environ["USER"] = username.strip()
     os.environ["PASS"] = password.strip()
@@ -67,7 +67,7 @@ def generate_env():
     set_key(dotenv_path, "USER", username.strip())
     set_key(dotenv_path, "PASS", password.strip())
     set_key(dotenv_path, "DB_NAME", DB_NAME)
-    
+
 
 def is_valid_env():
     ''' checks if the .env file is valid (for our purposes) '''
@@ -75,7 +75,7 @@ def is_valid_env():
     env_vars = dotenv_values(".env")
     for var in env_vars:
         if len(env_vars[var]) < 1:
-            print("Missing environment variables for DB connection...") 
+            print("Missing environment variables for DB connection...")
             return False
     return True
 
@@ -90,9 +90,9 @@ def init():
     try:
         # connect to MySQL server
         db = mysql.connector.connect(
-            host = os.environ["HOST"],
-            user = os.environ["USER"],
-            passwd = os.environ["PASS"]
+            host=os.environ["HOST"],
+            user=os.environ["USER"],
+            passwd=os.environ["PASS"]
         )
 
         # check for existing database
@@ -110,8 +110,9 @@ def init():
 
             # create a user_table
             # TODO: Abby, please check if this right! -Neil
-            cursor.execute("CREATE TABLE user_table (username VARCHAR(100) PRIMARY KEY, eutk INT, eKEK INT, ev INT, salt INT, esk INT)")
-        
+            cursor.execute(
+                "CREATE TABLE user_table (username VARCHAR(100) PRIMARY KEY, eutk INT, eKEK INT, ev INT, salt INT, esk INT)")
+
         # close the DB cursor and connection
         cursor.close()
         db.close()
@@ -156,10 +157,10 @@ def generate_master_key(master_password, salt):
     # CONVERT MASTER PASSWORD INTO BYTES ??
     # Password Based Key Derivation, a slow hashing function
     kdf = PBKDF2HMAC(algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100000,
-        )
+                     length=32,
+                     salt=salt,
+                     iterations=100000,
+                     )
     # derives the key from the password
     master_key = base64.urlsafe_b64encode(kdf.derive(master_password))
     f = Fernet(master_key)
@@ -172,20 +173,20 @@ def generate_user_table_key(KEK):
     ''' generates a key to encrypt passwords added to the user_table '''
 
     kdf = KBKDFHMAC(
-     algorithm=hashes.SHA256(),
-     mode=Mode.CounterMode,
-     length=32,
-     rlen=4,
-     llen=4,
-     location=CounterLocation.BeforeFixed,
-     label=label,
-     context=context,
-     fixed=None)
+        algorithm=hashes.SHA256(),
+        mode=Mode.CounterMode,
+        length=32,
+        rlen=4,
+        llen=4,
+        location=CounterLocation.BeforeFixed,
+        label=label,
+        context=context,
+        fixed=None)
     user_table_key = kdf.derive(KEK)
     return user_table_key
 
 
-#TODO is this not just ^ ?? -Neil
+# TODO is this not just ^ ?? -Neil
 def generate_service_table_key():
     '''INSERT FUNCTION DESCRIPTION'''
 
@@ -195,7 +196,7 @@ def generate_service_table_key():
 
     # Checks if user supplied password matches the stored one
     # also has added functionality of decrypting and saving the things we need,
-        # stretch goal is that when app "terminates" the saved things are cleared from mem
+    # stretch goal is that when app "terminates" the saved things are cleared from mem
     # DB done (I think)
 
 
@@ -203,7 +204,7 @@ def generate_service_table_key():
 ##  ACTIONS FOR UNAUTHENTICATED USERS  ##
 #########################################
 
-def create_user(master_password, username):
+def create_user(username, master_password):
     ''' create a user with master_password, and make a user_table '''
 
     salt = os.urandom(16)
@@ -211,13 +212,13 @@ def create_user(master_password, username):
     user_table_key = generate_user_table_key(key_encryption_key)
 
     service_key = generate_service_table_key()
-    
+
     # Need to store:
-    username = username #TODO: is this needed? -Neil
+    username = username  # TODO: is this needed? -Neil
     encrypted_user_table_key = key_encryption_key.encrypt(user_table_key)
     encyrpted_KEK = user_table_key.encrypt(key_encryption_key)
     encrypted_validator = user_table_key.encrypt(user_table_key)
-    salt = salt #TODO: is this needed? -Neil
+    salt = salt  # TODO: is this needed? -Neil
     encrypted_service_key = user_table_key.encrypt(service_key)
 
     # SEND EVERYTHING TO USER_TABLE
@@ -240,7 +241,7 @@ def create_user(master_password, username):
     # TODO: ASK
 
 
-def authenticate_user():
+def authenticate_user(username, master_password):
     ''' authenticates a user if they supply a valid username and master_password '''
 
     # USER ENTERS USERNAME #
@@ -268,18 +269,17 @@ def authenticate_user():
     # validator = KEKorTABLE_KEY.decrypt(encrypted_validator)
 
     # if validator == table_key:
-        # VALID USER!
-        # YAY :)
-        # Save decrypted values of the database. So technically the table on our computers will never hold something that is decrypted
-        # Instead we load the decrypted values into memory for access (we do that here) (we have to acknowledge that having it in memory is a threat)
-        # TODO: SAVE WHERE?
-        # save KEK for this session (true_KEK = table_key.decrypt(encrypted_KEK), also check if true_KEK==KEK that we just calculated)
-        # save user_table_key
-        # decrypt(service_table_key) and save it
+    # VALID USER!
+    # YAY :)
+    # Save decrypted values of the database. So technically the table on our computers will never hold something that is decrypted
+    # Instead we load the decrypted values into memory for access (we do that here) (we have to acknowledge that having it in memory is a threat)
+    # TODO: SAVE WHERE?
+    # save KEK for this session (true_KEK = table_key.decrypt(encrypted_KEK), also check if true_KEK==KEK that we just calculated)
+    # save user_table_key
+    # decrypt(service_table_key) and save it
     # else:
-        # NOT A VALID USER!
-        # NAY :(
-    
+    # NOT A VALID USER!
+    # NAY :(
 
     # TODO: Can we have this function return True or False? so we can use it to authenticate in main()? -Neil
     return
@@ -302,7 +302,8 @@ def add_service(service, username, password, KEK):
     # call function that sends to db, that function will encrypt using service_key
 
     # for each service we store service, username, encrypted_pass, encrypted_key
-    return
+
+    return  # TODO: Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
 
 
 # TODO: Is this not just get_service down below? -Neil
@@ -344,7 +345,7 @@ def get_service(service, username, user_table_key, KEK):
     # key = KEK.decrypt(encrypted_key)
     # password = key.decrypt(encrypted_pass)
 
-    return #password
+    return  # password
 
 
 def update_service(service, username, new_password):
@@ -354,7 +355,7 @@ def update_service(service, username, new_password):
     # ENCRYPT
     # update the entry's password with the new_password
 
-    return
+    return  # TODO: Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
 
 
 def delete_service(service, username):
@@ -363,68 +364,149 @@ def delete_service(service, username):
     # use service/username to find the right entry
     # delete the entry
 
-    return
+    return  # TODO: Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
 
 
 ###########################
 ##  APPLICATION WRAPPER  ##
 ###########################
 
-@Gooey(program_name='open-sesame')  # attach Gooey to our code
+# attach Gooey to our code
+@Gooey(program_name='open-sesame', program_description='An open-source password manager sans Alibaba and the Forty Thieves', default_size=(550, 440))
 def main():
-    print()
+    # used for checking if a user is authenticated
+    authenticated = False
+
+    # initialize for first-time users
     if not init():
         return
 
-    parser = GooeyParser()                      # main app
-    subs = parser.add_subparsers()              # add functions to the app
-    setup_parser = subs.add_parser('setup')     # add the "setup acount" function
-    login_parser = subs.add_parser('login')     # add the "login account" function
-    add_parser = subs.add_parser('add')         # add the "add password" function
-    get_parser = subs.add_parser('get')         # add the "get password" function
-    update_parser = subs.add_parser('update')   # add the "update password" function
-    delete_parser = subs.add_parser('delete')   # add the "delete password" function
+    parser = GooeyParser()                          # main app
+    subs = parser.add_subparsers(dest='command')    # main "function" for app
+    
+    # add "sub-functions" (sub-parsers) to the main "function" (parser)
+    setup_parser = subs.add_parser('setup')
+    login_parser = subs.add_parser('login')
+    add_parser = subs.add_parser('add')
+    get_parser = subs.add_parser('get')
+    update_parser = subs.add_parser('update')
+    delete_parser = subs.add_parser('delete')
 
-    # add argument groups for each parser
-    # add_parser.add_argument_group()
+    # add arguments (input fields) for parsers (functions)
+    setup_group = setup_parser.add_argument_group("Setup an Account")
+    setup_group.add_argument("Account Username")
+    setup_group.add_argument("Master Password", widget="PasswordField")
 
-#     # add user input fields for function parameters
-#     add_parser.add_argument('Service', widget='Textarea', gooey_options={
-#         'initial_value': 'Backrub'
-#     })
-#     add_parser.add_argument('Username', widget='Textarea', gooey_options={
-#         'initial_value': 'elliot_alderson'
-#     })
-#     add_parser.add_argument('Password', widget='Textarea', gooey_options={
-#         'initial_value': 'eXamp!e_102'
-#     })
+    login_group = login_parser.add_argument_group("Login to Account")
+    login_group.add_argument("Account Username")
+    login_group.add_argument("Master Password", widget="PasswordField")
 
-#     get_parser.add_argument('Service', widget='Textarea', gooey_options={
-#         'initial_value': 'Backrub'
-#     })
+    add_group = add_parser.add_argument_group("Add Password")
+    add_group.add_argument("Service")
+    add_group.add_argument("Username")
+    add_group.add_argument("Password", widget="PasswordField")
 
-#     args = vars(parser.parse_args())    # initialize app
+    get_group = get_parser.add_argument_group("Get Password")
+    get_group.add_argument("Service")
+    get_group.add_argument("Username")
 
-#     # Checkpoint: will need to change to account for add_service and add_user. FIX BELOW
-#     if len(args) > 1:   # add password
-#         print('Encrypting password ...')
-#         ##   NEW USER ALERT!! ##
-#         ##     ENCRYPTING     ##
-#         ## HASH PASSWORD HERE ##
+    update_group = update_parser.add_argument_group("Update Password")
+    update_group.add_argument("Service")
+    update_group.add_argument("Username")
+    update_group.add_argument("New Password", widget="PasswordField")
 
-#         new_pass = bytes(args['Password'], 'utf-8')
-#         master_key = generate_master_key(new_pass, args['Username'])
+    delete_group = delete_parser.add_argument_group("Delete Password")
+    delete_group.add_argument("Service")
+    delete_group.add_argument("Username")
 
-#         service, username, password = args['Service'], args['Username'], master_key
-#         add_login(service, username, password)
-#         print('Credentials stored \n')
-#     else:   # get password
-#         service = args['Service']
-#         print('Searching for {} ...'.format(service))
-#         creds = get_login(service)
-#         if creds:
-#             print('\tService \t\t=>\t {} \n \tUsername \t=>\t {} \n \tPassword \t=>\t {}'.format(
-#                 service, creds[0][0], creds[0][1]))
+    # run app
+    args = vars(parser.parse_args())
+    cmd = args['command']
+
+
+    # handle subfunctions and their args
+    if cmd == 'setup':
+        print("Creating account...")
+        account_username = args['Account Username']
+        master_password = args['Master Password']
+        create_user(account_username, master_password)
+        print("Account created!")
+        print("You must still 'login.'")
+        print()
+
+    elif cmd == 'login':
+        print("Authenticating user...")
+        account_username = args['Account Username']
+        master_password = args['Master Password']
+        is_auth = authenticate_user(account_username, master_password)
+        if is_auth:
+            print("User authenticated!")
+            authenticated = True
+        else:
+            print("User authentication failed!")
+            authenticated = False
+        print()
+
+    else:
+        if authenticated:
+            if cmd == 'add':
+                print("Encrypting password...")
+                ## ENCRYPT ##
+                print("Storing password...")
+                service = args['Service']
+                username = args['Username']
+                master_password = args['Password']
+                is_added = add_service(service, username, password)
+                if is_added:
+                    print("Password added!")
+                else:
+                    print("Duplicate service/username pair exists, password not added.")
+                print()
+
+            elif cmd == 'get':
+                print("Searching for password...")
+                service = args['Service']
+                username = args['Username']
+                creds = (get_service(service, username))
+                if creds:
+                    print("Password found!")
+                    print('\tService \t\t=>\t {} \n \tUsername \t=>\t {} \n \tPassword \t=>\t {}'.format(
+                        service, creds[0][0], creds[0][1]))
+                else:
+                    print('Password not found.')
+                print()
+
+            elif cmd == 'update':
+                print("Updating password...")
+                service = args['Service']
+                username = args['Username']
+                new_password = args['New Password']
+                is_updated = update_service(service, username, password)
+                if is_updated:
+                    print("Password updated!")
+                else:
+                    print("Login not found, password not updated.")
+                print()
+
+
+            elif cmd == 'delete':
+                print("Deleting password...")
+                service = args['Service']
+                username = args['Username']
+                is_deleted = delete_service(service, username)
+                if is_deleted:
+                    print("Password deleted!")
+                else:
+                    print("Login not found, password not deleted.")
+                print()
+
+            else:
+                print("INVALID COMMAND SELECTED!")
+                print("How did you even do that??\n")
+        else:
+            print("User Authentication Error!")
+            print("Returning users: Use 'login'")
+            print("New users: Use 'setup' and then 'login'\n")
 
 
 main()
