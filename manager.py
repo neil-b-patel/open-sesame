@@ -109,10 +109,14 @@ def init():
             cursor.execute("CREATE DATABASE {}".format(os.environ["DB_NAME"]))
 
             # create a user_table
-            # TODO: Abby, please check if this right! -Neil
+            # Abby, please check if this right! -Neil | yuh - Abby
             cursor.execute(
                 "CREATE TABLE user_table (username VARCHAR(100) PRIMARY KEY, eutk INT, eKEK INT, ev INT, salt INT, esk INT)")
 
+    # for each service we store service, username, encrypted_pass, encrypted_key
+    #TODO: are these strings or ints
+             cursor.execute(
+                "CREATE TABLE services (username VARCHAR(100), service VARCHAR(100), ep TEXT, ek TEXT, PRIMARY KEY(username, service));")
         # close the DB cursor and connection
         cursor.close()
         db.close()
@@ -197,7 +201,7 @@ def generate_service_table_key():
     # Checks if user supplied password matches the stored one
     # also has added functionality of decrypting and saving the things we need,
     # stretch goal is that when app "terminates" the saved things are cleared from mem
-    # DB done (I think)
+  
 
 
 #########################################
@@ -214,22 +218,22 @@ def create_user(username, master_password):
     service_key = generate_service_table_key()
 
     # Need to store:
-    username = username  # TODO: is this needed? -Neil
+    username = username  # TODO: is this needed? -Neil | Ben this is for u - Abby
     encrypted_user_table_key = key_encryption_key.encrypt(user_table_key)
     encyrpted_KEK = user_table_key.encrypt(key_encryption_key)
     encrypted_validator = user_table_key.encrypt(user_table_key)
-    salt = salt  # TODO: is this needed? -Neil
+    salt = salt  # TODO: is this needed? -Neil | Ben this is for u - Abby
     encrypted_service_key = user_table_key.encrypt(service_key)
 
     # SEND EVERYTHING TO USER_TABLE
     connection = create_connection()
     cursor = connection.cursor()
 
-    # TODO: Should we create a user_table here? -Neil
+    # Should we create a user_table here? -Neil | No, it gets created in init() above - ABby
 
     # TODO: MENTION VARCHAR FOR USERNAME
     # TODO: are these strings or integers?
-    cursor.execute("INSERT INTO user_table (username, eutk, eKEK, ev, salt, esk) VALUES (%s, %s, %s, %s, %s)",
+    cursor.execute("INSERT INTO user_table (username, eutk, eKEK, ev, salt, esk) VALUES (%d, %d, %d, %d, %d)",
                    (username, encrypted_user_table_key, encrypted_KEK, encrypted_validator, salt, encrypted_service_key))
     connection.commit()
     cursor.close()
@@ -245,7 +249,6 @@ def authenticate_user(username, master_password):
     ''' authenticates a user if they supply a valid username and master_password '''
 
     # USER ENTERS USERNAME #
-    # username =
     # attempted_pass = USER_ENTERED_MASTER_PASSWORD
     # SALT IS NOT ENCRYPTED WHEN ITS STORED!
     # grab: salt, encrypted_user_table_key,  grab encrypted validator
@@ -281,7 +284,7 @@ def authenticate_user(username, master_password):
     # NOT A VALID USER!
     # NAY :(
 
-    # TODO: Can we have this function return True or False? so we can use it to authenticate in main()? -Neil
+    # TODO: Can we have this function return True or False? so we can use it to authenticate in main()? -Neil | Dont we want to return the above info? - Abby
     return
 
 
@@ -296,75 +299,151 @@ def add_service(service, username, password, KEK):
     key = Fernet.generate_key()
     f = Fernet(key)
     encrypted_pass = f.encrypt(password)
-    # KEK = get KEK
     # encrypted_key = KEK.encrypt(f)
     # what?
     # call function that sends to db, that function will encrypt using service_key
 
-    # for each service we store service, username, encrypted_pass, encrypted_key
-
-    return  # TODO: Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
-
-
-# TODO: Is this not just get_service down below? -Neil
-# TODO: do we want to stick with xyz_login() or xyz_service()? -Neil
-def get_login(service, username):
-    ''' retrieve the password for the given service and username '''
-
+    # ADD EVRYTHING TO TABLE
+    # or each service we store service, username, encrypted_pass, encrypted_key
     connection = create_connection()
-
     cursor = connection.cursor()
 
-    # TODO: this users table may have to be changed
-    cursor.execute(
-        "SELECT User, Pass FROM users WHERE Service = (%s)", (service))
+    cursor.execute("INSERT INTO services (username, service, ep, ek) VALUES (%s, %s, %s, %s)",
+                   (username, service, encrypted_pass, encrypted_key))
 
-    login = cursor.fetchall()
-    # password = decrypt(Pass)
 
-    if(len(login) == 0):
-        print('Credentials not found \n')
-        # TODO: make sure this doesn't fuck stuff up
-        cursor.close()
-        connection.close()
+    count = cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s)) AND service = (%s)", (username, servive))
 
-    else:
-        print('Credentials found: \n')
-        cursor.close()
-        connection.close()
-        return login
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+    if(count == 0){
+        return False
+    }
+    else{
+        return True
+    }
+
+    # Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil | done - Abby
+
+
+# # TODO: Is this not just get_service down below? -Neil | Yes I said that remember - Abby
+# # TODO: do we want to stick with xyz_login() or xyz_service()? -Neil
+# def get_login(service, username):
+#     ''' retrieve the password for the given service and username '''
+
+#     connection = create_connection()
+
+#     cursor = connection.cursor()
+
+#     # TODO: this users table may have to be changed
+#     cursor.execute(
+#         "SELECT User, Pass FROM users WHERE Service = (%s)", (service))
+
+#     login = cursor.fetchall()
+#     # password = decrypt(Pass)
+
+#     if(len(login) == 0):
+#         print('Credentials not found \n')
+#         # TODO: make sure this doesn't fuck stuff up
+#         cursor.close()
+#         connection.close()
+
+#     else:
+#         print('Credentials found: \n')
+#         cursor.close()
+#         connection.close()
+#         return login
 
 
 def get_service(service, username, user_table_key, KEK):
     ''' get the login that matches the given service and username '''
 
     # if service in table service
+    connection = create_connection()
+    cursor = connection.cursor()
+
+    count = cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s)) AND service = (%s)", (username, servive))
+
+    if(count == 0){
+        #TODO: what do i return here?
+        return 
+    }
+    else{
+         encrypted_pass = cursor.execute(
+        "SELECT ep FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+    }
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
     # grab value stored in encrypted_pass and encrypted_key
+    key = KEK.decrypt(encrypted_key)
+    password = key.decrypt(encrypted_pass)
 
-    # KEK = get KEK
-    # key = KEK.decrypt(encrypted_key)
-    # password = key.decrypt(encrypted_pass)
-
-    return  # password
+    return  password
 
 
 def update_service(service, username, new_password):
     ''' update the login that matches the given service and username with the given password'''
 
-    # use service/username to find the right entry
-    # ENCRYPT
+     # use service/username to find the right entry
+
+     # TODO: for ben- ENCRYPT (i guessed on the code below)
+     # new_ep = encrypt(new_password)
+     # key = Fernet.generate_key()
+     # f = Fernet(key)
+     # new_ep = f.encrypt(new_password)
+     # new_ek = KEK.encrypt(f)
+    connection = create_connection()
+    cursor = connection.cursor()
+
     # update the entry's password with the new_password
 
-    return  # TODO: Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
+    cursor.execute("UPDATE services SET ep = new_ep, ek = new_ek WHERE username = (%s) AND service = (%s)", (username, service))
+
+    ep =  cursor.execute("SELECT ep FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+
+    ek =  cursor.execute("SELECT ek FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+    if(ep == new_ep and ek == new_ek){
+        return True
+    }
+    else{
+        return False;
+    }
+    # Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
 
 
 def delete_service(service, username):
     ''' delete the login that matches the given service and username '''
 
-    # use service/username to find the right entry
     # delete the entry
+    connection = create_connection()
+    cursor = connection.cursor()
 
-    return  # TODO: Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
+    ep = cursor.execute("DELETE FROM services WHERE service = (%s) AND username = (%s)", (username, service))
+
+    count = cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s)) AND service = (%s)", (username, servive))
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+    if(count == 0){
+        return True
+    }
+    else{
+        return False
+    }
+
+     #Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
 
 
 ###########################
