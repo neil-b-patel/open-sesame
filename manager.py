@@ -372,7 +372,7 @@ def delete_service(service, username):
 ###########################
 
 # attach Gooey to our code
-@Gooey(program_name='open-sesame', program_description='An open-source password manager sans Alibaba and the Forty Thieves', default_size=(550, 440))
+@Gooey(program_name='open-sesame', program_description='An open-source password manager sans Alibaba and the Forty Thieves', default_size=(550, 440), show_restart_button=False)
 def main():
     # used for checking if a user is authenticated
     authenticated = False

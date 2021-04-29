@@ -28,7 +28,6 @@ Password Manager -- A Group Final Project for CSC 382: Introduction to Informati
     - unsuccesful, raise an GitHub issue detailing your usage and copy the error log
 10. To...
     - perform another action, click "Edit"
-    - rerun the same action (w/ the same inputs), click "Restart"
     - exit the application, click "Close"
 
 ## Help
