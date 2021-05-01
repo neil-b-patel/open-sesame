@@ -56,7 +56,7 @@ load_dotenv(dotenv_path, override=True)
 
 def generate_env():
     ''' generates an .env file with user-specified username/password for DB connection '''
-    
+
     print("Generating .env for local DB connection")
 
     username = ""
@@ -93,7 +93,7 @@ def is_valid_env():
             print("Missing environment variables for DB connection...")
             return False
         counter += 1
-    
+
     return True
 
 
@@ -143,7 +143,7 @@ def init():
     except Error as e:
         print(f"\nThe error '{e}' occurred")
         print("Perhaps you need to edit your .env?")
-        
+
     return False
 
 
@@ -191,7 +191,7 @@ def generate_master_key(master_password):
 
 def generate_user_table_key(KEK):
     ''' generates a key to encrypt passwords added to the user_table '''
-    
+
     # key-based key derivation
     kdf = KBKDFHMAC(
         algorithm=hashes.SHA256(),
@@ -305,17 +305,7 @@ def authenticate_user(username, master_password):
             return [True, decrypted_KEK, table_key, decrypted_service_table_key]
 
     return [False, None, None, None, None]
-    
-    # Debugging statements
-    #print("salt before we str encode it " , salt)
-    #print("SUPPOSED EUTK GENERATED SAME WAY AS BEFORE: ", supposed_eutk)
-    #print("this is KEK!: " , byte_KEK)
-    #true__en_kek = b"gAAAAABgi_nI5INEMpL2sgIHfYeuGYaDbQgDoFma6zntbKvfospRG-GncWhESQwMpjV9d-wEEtLqvLmVn9A-kwtCupA-_VdIdFNeB60VEQgLPwAkwCeFyuEtfsU7BQua0w3q7MgUgwnB"
-    #print("THIS IS THE GENERATED KEK FROM THE ATTEMPTED MP: ", byte_KEK)
-    #print("encrypted_user_table_key: " , encrypted_user_table_key)
-    #print("validator: ", encrypted_validator)
-    #print("salt before we str encode it " , salt)
-    #print("this is the salt grabbed and encoded from db: " , salt)
+
 
 
 #####################################
@@ -324,7 +314,7 @@ def authenticate_user(username, master_password):
 
 def add_service(service, username, password, KEK):
     ''' add a login (service, username, password) to be saved in the password manager '''
-    
+
     key_KEK = Fernet(KEK)
     key = Fernet.generate_key()
     encrypted_key = key_KEK.encrypt(key)
@@ -355,7 +345,7 @@ def add_service(service, username, password, KEK):
     else:
         return True
 
-
+                                    # dont need this
 def get_service(service, username, user_table_key, KEK):
     ''' get the login that matches the given service and username '''
 
@@ -414,17 +404,15 @@ def update_service(service, username, new_password, KEK):
     # works. There's something wonky with how
     # we are encrypting is my guess.
 
-    key = Fernet.generate_key()
-    f = Fernet(key)
-    KEK = Fernet(KEK)
 
+    KEK = Fernet(KEK)
     byte_en_key = str.encode(encrypted_key[0])
     decrypted_key = KEK.decrypt(byte_en_key)
     key = Fernet(decrypted_key)
     byte_pass = str.encode(new_password)
     encoded_pass = base64.urlsafe_b64encode(byte_pass)
-    
-    encrypted_pass = f.encrypt(encoded_pass)
+
+    encrypted_pass = key.encrypt(encoded_pass)
     str_en_pass = bytes.decode(encrypted_pass)
 
     cursor.execute("UPDATE services SET ep = (%s)  WHERE username = (%s) AND service = (%s)",
@@ -467,7 +455,7 @@ def delete_service(service, username):
 
     if count[0] == 0:
         return True
-    
+
     return False
 
 
