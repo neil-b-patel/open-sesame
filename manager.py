@@ -2,19 +2,16 @@
 ##  LIBRARIES  ##
 #################
 
+import base64, mysql.connector, os
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives.kdf.kbkdf import (
-    CounterLocation, KBKDFHMAC, Mode)
+from cryptography.hazmat.primitives.kdf.concatkdf import ConcatKDFHash
+from cryptography.hazmat.primitives.kdf.kbkdf import (CounterLocation, KBKDFHMAC, Mode)
+from dotenv import load_dotenv, set_key, dotenv_values
 from gooey import Gooey, GooeyParser
 from mysql.connector import Error
-from dotenv import load_dotenv, set_key, dotenv_values
 from os.path import join, dirname
-import base64
-import mysql.connector
-import os
-from cryptography.hazmat.primitives.kdf.concatkdf import ConcatKDFHash
 
 #################
 ##  CONSTANTS  ##
@@ -22,23 +19,36 @@ from cryptography.hazmat.primitives.kdf.concatkdf import ConcatKDFHash
 
 HOST = "localhost"
 DB_NAME = "passManager"
-
+NUM_ENV_DB = 4
+NUM_ENV_AUTH = 4
 
 #################
 ##  LOAD .ENV  ##
 #################
 
 dotenv_path = join(dirname(__file__), '.env')
-load_dotenv(dotenv_path, override = True)
+load_dotenv(dotenv_path, override=True)
 
 
 ############
 ##  TODO  ##
 ############
-# BEN => generate user-specific secrets, store/read secrets in master table, encrypt/hash passwords
-# ABBY => storing secrets in master table, SQL for add/get/update/delete funcs, secure way to deploy/host database, sanitize inputs
-# NEIL => 5 subparsers for GUI (setup, login, add, get, update, delete)
+# BEN => fix issue where 'update' breaks 'get'
+# ABBY => add print message/error handling for duplicate account or entries
+# NEIL => authentication (done)
 
+
+##################
+##  EDGE CASES  ##
+##################
+# Duplicate Account Creation Error
+###  mysql.connector.errors.IntegrityError: 1062 (23000): Duplicate entry 'neil' for key 'user_table.PRIMARY'
+
+# Duplicate Entry Error (same Account)
+###  mysql.connector.errors.IntegrityError: 1062 (23000): Duplicate entry 'test-test' for key 'services.PRIMARY'
+
+# Duplicate Entry Error (different Accounts)
+###  too many errors to paste here
 
 ##################
 ##  INIT FUNCS  ##
@@ -46,6 +56,8 @@ load_dotenv(dotenv_path, override = True)
 
 def generate_env():
     ''' generates an .env file with user-specified username/password for DB connection '''
+    
+    print("Generating .env for local DB connection")
 
     username = ""
     password = ""
@@ -73,19 +85,24 @@ def generate_env():
 def is_valid_env():
     ''' checks if the .env file is valid (for our purposes) '''
 
+    counter = 0
     env_vars = dotenv_values(".env")
+
     for var in env_vars:
-        if len(env_vars[var]) < 1:
+        if counter < 4 and len(env_vars[var]) < 1:
             print("Missing environment variables for DB connection...")
             return False
+        counter += 1
+    
     return True
 
-    # TODO: convert encrypted passwords to strings before storing in db, convert encrypted keys
+
 def init():
     ''' initializes the app for first-time users '''
 
     # check for valid .env or generate it
     if not is_valid_env():
+        print("Valid .env not found...")
         generate_env()
 
     try:
@@ -107,31 +124,26 @@ def init():
         # database not found, setting up database and tables
         if not db_exists:
             # create a database
-            print("creating a database")
+            print("\nCreating a database...")
             cursor.execute("CREATE DATABASE {}".format(os.environ["DB_NAME"]))
-
             cursor.execute("USE {}".format(os.environ["DB_NAME"]))
 
             # create a user_table
-            # Abby, please check if this right! -Neil | yuh - Abby
             cursor.execute(
                 "CREATE TABLE user_table (username VARCHAR(100) PRIMARY KEY, eutk TEXT, eKEK TEXT, ev TEXT, esk TEXT)")
 
-    # for each service we store service, username, encrypted_pass, encrypted_key
-    #TODO: are these strings or ints | if it's a key == Fernet(object),
-    ## ep, if bytes, string_rep = base64.urlsafe_b64decode(encrypted_pass)
             cursor.execute(
                 "CREATE TABLE services (username VARCHAR(100), service VARCHAR(100), ep TEXT, ek TEXT, PRIMARY KEY(username, service));")
-        # close the DB cursor and connection
-        #connection.commit()
+
         db.commit()
         cursor.close()
         db.close()
         return True
 
     except Error as e:
-        print(f"The error '{e}' occurred")
-
+        print(f"\nThe error '{e}' occurred")
+        print("Perhaps you need to edit your .env?")
+        
     return False
 
 
@@ -155,6 +167,7 @@ def create_connection():
 
     except Error as e:
         print(f"The error '{e}' occurred")
+        print("Perhaps you need to edit your .env?")
 
     return connection
 
@@ -167,9 +180,9 @@ def generate_master_key(master_password):
     # Password Based Key Derivation, a slow hashing function
     otherinfo = b"concatkdf-example"
     ckdf = ConcatKDFHash(
-    algorithm=hashes.SHA256(),
-     length=32,
-     otherinfo=otherinfo,)
+        algorithm=hashes.SHA256(),
+        length=32,
+        otherinfo=otherinfo,)
 
     safely = str.encode(master_password)
     master_key = base64.urlsafe_b64encode(ckdf.derive(safely))
@@ -178,6 +191,7 @@ def generate_master_key(master_password):
 
 def generate_user_table_key(KEK):
     ''' generates a key to encrypt passwords added to the user_table '''
+    
     # key-based key derivation
     kdf = KBKDFHMAC(
         algorithm=hashes.SHA256(),
@@ -186,21 +200,16 @@ def generate_user_table_key(KEK):
         rlen=4,
         llen=4,
         location=CounterLocation.BeforeFixed,
-        label=  b"KBKDF HMAC Label",
+        label=b"KBKDF HMAC Label",
         context=b"KBKDF HMAC Context",
         fixed=None)
     key = kdf.derive(KEK)
-    #print("KEY DERIVED FROM GENERATE USER KEY: " , key)
-    #user_table_key = Fernet(key)
     return key
 
-
-# TODO is this not just ^ ?? -Neil | No -ben
 def generate_service_table_key():
-    '''INSERT FUNCTION DESCRIPTION'''
+    ''' generates a key to encrypt passwords added to the service_table '''
 
     key = Fernet.generate_key()
-    #service_table_key = Fernet(key)
     return key
 
 
@@ -211,45 +220,31 @@ def generate_service_table_key():
 def create_user(username, master_password):
     ''' create a user with master_password, and make a user_table '''
 
-    #salt = os.urandom(16)
+    # keys are of type bytes
     key_encryption_key = generate_master_key(master_password)
     user_table_key = generate_user_table_key(key_encryption_key)
     service_key = generate_service_table_key()
-    # ^ all bytes
 
+    # make them fernet objects used to encrypt
     KEK = Fernet(key_encryption_key)
     b64_user_table_key = base64.urlsafe_b64encode(user_table_key)
     UTK = Fernet(b64_user_table_key)
-    # ^ makes them fernet objects used to encrypt
 
-
+    # encrypt keys
     encrypted_user_table_key = KEK.encrypt(user_table_key)
     encrypted_KEK = UTK.encrypt(key_encryption_key)
     encrypted_validator = UTK.encrypt(user_table_key)
     encrypted_service_key = UTK.encrypt(service_key)
 
-    # CONVERT TO STRINGS
+    # convert to strings
     str_encrypted_user_table_key = bytes.decode(encrypted_user_table_key)
     str_en_KEK = bytes.decode(encrypted_KEK)
     str_en_validator = bytes.decode(encrypted_validator)
     str_en_service_key = bytes.decode(encrypted_service_key)
-    #str_salt = bytes.decode(salt)
-    #str_salt = str(salt)
 
-    # SEND EVERYTHING TO USER_TABLE
+    # write to DB
     connection = create_connection()
     cursor = connection.cursor()
-
-    #print("before db esk is: " , str_en_service_key)
-
-    #str_salt = str_salt[1:-1]
-    #print("before db str_salt is: ", str_salt)
-
-
-
-
-    # TODO: MENTION VARCHAR FOR USERNAME
-    # TODO: are these strings or integers?
     cursor.execute("INSERT INTO user_table (username, eutk, eKEK, ev, esk) VALUES (%s, %s, %s, %s, %s)",
                    (username, str_encrypted_user_table_key, str_en_KEK, str_en_validator, str_en_service_key))
     connection.commit()
@@ -262,15 +257,8 @@ def create_user(username, master_password):
 def authenticate_user(username, master_password):
     ''' authenticates a user if they supply a valid username and master_password '''
 
-    # USER ENTERS USERNAME #
-    # attempted_pass = USER_ENTERED_MASTER_PASSWORD
-    # SALT IS NOT ENCRYPTED WHEN ITS STORED!
-    # grab: salt, encrypted_user_table_key,  grab encrypted validator
-
     connection = create_connection()
     cursor = connection.cursor()
-
-
 
     cursor.execute(
         "SELECT esk FROM user_table WHERE username = (%s)", (username,))
@@ -296,7 +284,6 @@ def authenticate_user(username, master_password):
     cursor.close()
     connection.close()
 
-
     encrypted_user_table_key = str.encode(encrypted_user_table_key[0])
     encrypted_validator = str.encode(encrypted_validator[0])
     byte_KEK = generate_master_key(master_password)
@@ -309,12 +296,7 @@ def authenticate_user(username, master_password):
     key_table_key = Fernet(b64_UTK)
     validator = key_table_key.decrypt(encrypted_validator)
 
-
-
     if validator == table_key:
-    # VALID USER!
-    # YAY :)
-        # sanity check
         eKEK = str.encode(eKEK[0])
         decrypted_KEK = key_table_key.decrypt(eKEK)
         if decrypted_KEK == byte_KEK:
@@ -323,7 +305,8 @@ def authenticate_user(username, master_password):
             return [True, decrypted_KEK, table_key, decrypted_service_table_key]
 
     return [False, None, None, None, None]
-    #Debugging statements
+    
+    # Debugging statements
     #print("salt before we str encode it " , salt)
     #print("SUPPOSED EUTK GENERATED SAME WAY AS BEFORE: ", supposed_eutk)
     #print("this is KEK!: " , byte_KEK)
@@ -341,7 +324,7 @@ def authenticate_user(username, master_password):
 
 def add_service(service, username, password, KEK):
     ''' add a login (service, username, password) to be saved in the password manager '''
-    print("this is kek: " , KEK)
+    
     key_KEK = Fernet(KEK)
     key = Fernet.generate_key()
     encrypted_key = key_KEK.encrypt(key)
@@ -358,12 +341,10 @@ def add_service(service, username, password, KEK):
     cursor.execute("INSERT INTO services (username, service, ep, ek) VALUES (%s, %s, %s, %s)",
                    (username, service, str_en_pass, str_en_key))
 
-
     connection.commit()
 
-
-    cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s) AND service = (%s)", (username, service))
-
+    cursor.execute(
+        "SELECT COUNT(1) FROM services WHERE username  = (%s) AND service = (%s)", (username, service))
 
     count = cursor.fetchone()
     cursor.close()
@@ -375,46 +356,14 @@ def add_service(service, username, password, KEK):
         return True
 
 
-    # Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil | done - Abby
-
-
-# # TODO: Is this not just get_service down below? -Neil | Yes I said that remember - Abby
-# # TODO: do we want to stick with xyz_login() or xyz_service()? -Neil
-# def get_login(service, username):
-#     ''' retrieve the password for the given service and username '''
-
-#     connection = create_connection()
-
-#     cursor = connection.cursor()
-
-#     # TODO: this users table may have to be changed
-#     cursor.execute(
-#         "SELECT User, Pass FROM users WHERE Service = (%s)", (service))
-
-#     login = cursor.fetchall()
-#     # password = decrypt(Pass)
-
-#     if(len(login) == 0):
-#         print('Credentials not found \n')
-#         # TODO: make sure this doesn't fuck stuff up
-#         cursor.close()
-#         connection.close()
-
-#     else:
-#         print('Credentials found: \n')
-#         cursor.close()
-#         connection.close()
-#         return login
-
-
 def get_service(service, username, user_table_key, KEK):
     ''' get the login that matches the given service and username '''
 
-    # if service in table service
     connection = create_connection()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s) AND service = (%s)", (username, service))
+    cursor.execute(
+        "SELECT COUNT(1) FROM services WHERE username  = (%s) AND service = (%s)", (username, service))
 
     count = cursor.fetchone()
 
@@ -423,37 +372,34 @@ def get_service(service, username, user_table_key, KEK):
 
     else:
         cursor.execute(
-        "SELECT ep FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+            "SELECT ep FROM services WHERE username = (%s) AND service = (%s)", (username, service))
 
         encrypted_pass = cursor.fetchone()
 
         cursor.execute(
-        "SELECT ek FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+            "SELECT ek FROM services WHERE username = (%s) AND service = (%s)", (username, service))
 
         encrypted_key = cursor.fetchone()
-
 
     connection.commit()
     cursor.close()
     connection.close()
 
-    # Decryption
+    # decryption
     byte_en_key = str.encode(encrypted_key[0])
     byte_en_pass = str.encode(encrypted_pass[0])
+    KEK = Fernet(KEK)
     decrypted_key = KEK.decrypt(byte_en_key)
     key = Fernet(decrypted_key)
     decrypted_pass = key.decrypt(byte_en_pass)
-    password = base64.urlsafe_b64decode(decrypted_pass)
+    password = bytes.decode(base64.urlsafe_b64decode(decrypted_pass))
 
-    return  [True,password]
+    return [True, password]
 
 
 def update_service(service, username, new_password, KEK):
     ''' update the login that matches the given service and username with the given password'''
 
-     # use service/username to find the right entry
-
-     # TODO: for ben- ENCRYPT (i guessed on the code below)
     connection = create_connection()
     cursor = connection.cursor()
     cursor.execute(
@@ -461,63 +407,69 @@ def update_service(service, username, new_password, KEK):
 
     encrypted_key = cursor.fetchone()
 
+    # TODO: (BEN)
+    # I think there's an issue where
+    # if a user updates their password,
+    # then retrieving the password no longer
+    # works. There's something wonky with how
+    # we are encrypting is my guess.
 
-    byte_en_key = str.encode(encrypted_key)
+    key = Fernet.generate_key()
+    f = Fernet(key)
+    KEK = Fernet(KEK)
+
+    byte_en_key = str.encode(encrypted_key[0])
     decrypted_key = KEK.decrypt(byte_en_key)
     key = Fernet(decrypted_key)
     byte_pass = str.encode(new_password)
     encoded_pass = base64.urlsafe_b64encode(byte_pass)
+    
     encrypted_pass = f.encrypt(encoded_pass)
     str_en_pass = bytes.decode(encrypted_pass)
 
-
-    cursor.execute("UPDATE services SET ep = (%s)  WHERE username = (%s) AND service = (%s)", (str_en_pass,username, service))
-
+    cursor.execute("UPDATE services SET ep = (%s)  WHERE username = (%s) AND service = (%s)",
+                   (str_en_pass, username, service))
 
     connection.commit()
 
-
-    cursor.execute("SELECT ep FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+    cursor.execute(
+        "SELECT ep FROM services WHERE username = (%s) AND service = (%s)", (username, service))
 
     new_ep = cursor.fetchone()
-
 
     cursor.close()
     connection.close()
 
-    if(str_en_pass == new_ep[0]):
+    if str_en_pass == new_ep[0]:
         return True
 
-    else:
-        return False
-
-    # Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
+    return False
 
 
 def delete_service(service, username):
     ''' delete the login that matches the given service and username '''
 
-    # delete the entry
     connection = create_connection()
     cursor = connection.cursor()
 
-    cursor.execute("DELETE FROM services WHERE username = (%s) AND service = (%s)", (username, service))
+    cursor.execute(
+        "DELETE FROM services WHERE username = (%s) AND service = (%s)", (username, service))
 
     connection.commit()
 
-    cursor.execute("SELECT COUNT(1) FROM services WHERE username  = (%s) AND service = (%s)", (username, service))
+    cursor.execute(
+        "SELECT COUNT(1) FROM services WHERE username  = (%s) AND service = (%s)", (username, service))
 
     count = cursor.fetchone()
 
     cursor.close()
     connection.close()
 
-    if(count[0] == 0):
+    if count[0] == 0:
         return True
-    else:
-        return False
+    
+    return False
 
-     #Can we have this function return True or False? so we can use it check if action was completed in main()? -Neil
 
 
 ###########################
@@ -527,15 +479,9 @@ def delete_service(service, username):
 # attach Gooey to our code
 @Gooey(program_name='open-sesame', program_description='An open-source password manager sans Alibaba and the Forty Thieves', default_size=(550, 440), show_restart_button=False)
 def main():
-    # used for checking if a user is authenticated
-    authenticated = False
-    KEK = b''
-    user_table_key = b''
-    service_table_key = b''
 
     # initialize for first-time users
-    if not init():
-        return
+    init()
 
     parser = GooeyParser()                          # main app
     subs = parser.add_subparsers(dest='command')    # main "function" for app
@@ -547,6 +493,7 @@ def main():
     get_parser = subs.add_parser('get')
     update_parser = subs.add_parser('update')
     delete_parser = subs.add_parser('delete')
+    logout_parser = subs.add_parser('logout')
 
     # add arguments (input fields) for parsers (functions)
     setup_group = setup_parser.add_argument_group("Setup an Account")
@@ -575,10 +522,11 @@ def main():
     delete_group.add_argument("Service")
     delete_group.add_argument("Username")
 
+    logout_group = login_parser.add_argument_group("Logout of Account")
+
     # run app
     args = vars(parser.parse_args())
     cmd = args['command']
-
 
     # handle subfunctions and their args
     if cmd == 'setup':
@@ -592,32 +540,32 @@ def main():
         print()
 
     elif cmd == 'login':
-        print("Authenticated flag: ", authenticated)
         print("Authenticating user...")
         account_username = args['Account Username']
         master_password = args['Master Password']
         secrets = authenticate_user(account_username, master_password)
-        print(secrets)
-        is_auth, KEK, user_table_key, service_table_key = secrets[0], secrets[1], secrets[2], secrets[3]
 
-        if is_auth:
+        # write secrets to .env
+        set_key(dotenv_path, "IS_AUTH", str(secrets[0]))
+        set_key(dotenv_path, "KEK", bytes.decode(secrets[1]))
+        set_key(dotenv_path, "UTK", str(secrets[2]))
+        set_key(dotenv_path, "STK", bytes.decode(secrets[3]))
+
+        if secrets[0]:
             print("User authenticated!")
-            authenticated = True
         else:
             print("User authentication failed!")
-            authenticated = False
         print()
-        print("Authenticated flag: ", authenticated)
-
 
     else:
-      #  authenticated = True
+        authenticated = bool(os.environ.get("IS_AUTH"))
         if authenticated:
             if cmd == 'add':
                 print("Encrypting password...")
                 service = args['Service']
                 username = args['Username']
                 password = args['Password']
+                KEK = os.environ.get("KEK")
                 is_added = add_service(service, username, password, KEK)
                 print("Storing password...")
                 if is_added:
@@ -630,7 +578,9 @@ def main():
                 print("Searching for password...")
                 service = args['Service']
                 username = args['Username']
-                creds = (get_service(service, username, user_table_key, KEK))
+                UTK = os.environ.get("UTK")
+                KEK = str.encode(os.environ.get("KEK"))
+                creds = (get_service(service, username, UTK, KEK))
                 if creds:
                     print("Password found!")
                     print('\tService \t\t=>\t {} \n \tUsername \t=>\t {} \n \tPassword \t=>\t {}'.format(
@@ -644,13 +594,14 @@ def main():
                 service = args['Service']
                 username = args['Username']
                 new_password = args['New Password']
-                is_updated = update_service(service, username, new_password, KEK)
+                KEK = os.environ.get("KEK")
+                is_updated = update_service(
+                    service, username, new_password, KEK)
                 if is_updated:
                     print("Password updated!")
                 else:
                     print("Login not found, password not updated.")
                 print()
-
 
             elif cmd == 'delete':
                 print("Deleting password...")
@@ -663,13 +614,20 @@ def main():
                     print("Login not found, password not deleted.")
                 print()
 
+            elif cmd == 'logout':
+                print("Logging out...")
+                set_key(dotenv_path, "IS_AUTH", str(False))
+                set_key(dotenv_path, "KEK", "")
+                set_key(dotenv_path, "UTK", "")
+                set_key(dotenv_path, "STK", "")
+                print("Log out successful!\n")
+
             else:
                 print("INVALID COMMAND SELECTED!")
                 print("How did you even do that??\n")
         else:
-            print("User Authentication Error!")
+            print("\nERROR: User Authentication Failed!")
             print("Returning users: Use 'login'")
             print("New users: Use 'setup' and then 'login'\n")
-
 
 main()
