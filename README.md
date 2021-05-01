@@ -1,6 +1,5 @@
 # open-sesame
 An open-source password manager sans Alibaba and the Forty Thieves.
-(Made for Dr. Sakib Miazi's CSC 382: Introduction to Information Security)
 
 ## Authors
 - Neil Patel '22
