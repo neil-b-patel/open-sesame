@@ -1,5 +1,10 @@
 # open-sesame
-An open-source password manager sans Alibaba and the Forty Thieves.
+An open-source password manager sans Alibaba and the Forty Thieves. 
+
+
+## Introduction
+If you're interested in learning more about our motivations, research, and/or development process, check out 'Open Sesame -- Writeup'.pdf! 
+If you're just here to demo the product, scroll down to 'Usage' for a step-by-step walkthrough!
 
 ## Authors
 - Neil Patel '22
